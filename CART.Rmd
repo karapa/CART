@@ -1,0 +1,171 @@
+---
+title: "Classification and Regression Trees using `rpart`"
+author: "Solon Karapanagiotis"
+date: "27 July 2016"
+output:
+  html_document:
+    highlight: haddock
+  pdf_document: default
+bibliography: biblioCART.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("rpart")
+```
+
+## Introduction
+
+The [`rpart`](https://cran.r-project.org/web/packages/rpart/rpart.pdf) package builds classification or regression tree (CART) models of a very general structure. We use the  Automobile Data from 'Consumer Reports' 1990 found in the package. In contains data on 111 cars, taken from pages 235-255, 281-285 and 287-288 of the April 1990 Consumer Reports Magazine. 
+
+```{r}
+str(car90)
+```
+
+Use the following command for more info on the variables
+
+```{r, eval=F}
+?car90 #for more info
+```
+
+I have excluded 2 variables: `Tires` because it is factor with a very large number of levels whose printout does not fit well in the page size and `Disp2` because it is a transformation of the response. 
+
+```{r}
+car90new <- car90[,-3]
+cars90new <- car90new[ ,-which(names(car90new) == "Tires")]
+```
+
+For illustration, I sample 30 data points as test set and use the rest as training set. However, when the number of samples is not large, a strong case can be made that a test set should be avoided because every sample may be needed for model building. Additionally, the size of the test set may not have sufficient power or precision to make reasonable judgements. Several researchers [@molinaro2005prediction; @martin1996small; @hawkins2003assessing] show that validation using a single test set can be a poor choice. I ignore these issues here. 
+
+```{r}
+set.seed(186)
+s <- sample(dim(cars90new)[1], 30)
+test <- cars90new[s, ]
+train <- cars90new[-s, ]
+```
+
+**The goal is to predict the engine displacement (in cubic inches) on the basis of the 31 variables.** 
+
+```{r}
+which(is.na(train$Disp)) # 2 missing values of the response
+```
+
+Those 2 observations are not used in the analysis (more details below).    
+
+## CART
+The algorithm uses a two-stage procedure:  
+  1. first the single variable is found which best splits the data into two groups ("best" is defined below). The data is separated, and then this process is applied separately to each sub-group, and so on recursively until the subgroups either reach a minimum size (5 for this data) or until no improvement can be made.  
+  2. The second stage of the procedure consists of using cross-validation to trim back the full tree.
+
+The "best" variable is chosen by sum of squares $SS_T- (SS_{right}+SS_{left})$, where $SS_T =
+\sum(y_i - \bar{y})$ is the sum of squares for the node, and $SS_{right}$, $SS_{left}$ are the sums of squares for the right and left son, respectively. This is equivalent to choosing the split to maximize the between-groups sum-of-squares in a simple analysis of variance.
+
+```{r}
+set.seed(1235) 
+controlrpart <- rpart.control(minsplit = 15, cp=0.01)
+rpartTree <- rpart(Disp ~ ., data = train, control=controlrpart, method="anova") #the anova method leads to regression trees
+```
+
+  * setting the seed will make sure the results reproducible. 
+  * `minsplit`: The minimum number of observations in a node for which the routine will even try to compute a split. Chosen to be 15 so the minimum number of observations in a terminal node would be 15/3=5.
+  * `cp`: complexity parameter (default=0.01). Any split that does not decrease the overall lack of fit by a factor of cp is not attempted. For instance, this means that the overall R-squared must increase by 0.01 at each step.
+  * for more details into the functions `rpart.control()` and `rpart()` visit [CRAN](https://cran.r-project.org/web/packages/rpart/index.html). 
+  
+```{r}
+print(rpartTree)
+```
+
+  * the tree was built on n=79 observations. 2 observations deleted due to missingness. 
+  * The child nodes of node $x$ are always $2x$ and $2x+1$. For example, the child nodes of node 2 are 4 and 5. 
+  * Other items in the list are the definition of the split used to create a node, n=the number of subjects at the node, the loss or error at the node (in our case the deviance-least squares), and the predicted mean value for the node.
+
+Plotting the tree
+
+```{r}
+plot(rpartTree, compress = TRUE, margin = 0.05)
+text(rpartTree, cex = 0.9)
+```
+
+We see that, for example, the highest engine displacement (i.e., 272.5 cubic inches) is predicted for a car with the overall gear ratio (`Gear2`), for automatic transmission, higher or equal to 2.345. 
+
+We have built a complete tree, possibly quite large and/or complex, and must now decide how much of that model to retain.
+
+```{r}
+printcp(rpartTree)
+```
+
+  * The complexity table is printed from the smallest tree (no splits) to the largest one
+(5 splits). 
+  * The number of splits is listed, rather than the number of nodes. The number of terminal nodes
+is always 1 + the number of splits.
+  * The relative error is $1 - R^2$, similar to linear regression. The xerror is related to the
+PRESS statistic. The first split appears to improve the fit the most. The last split
+adds little improvement to the apparent error, and increases the cross-validated error. 
+  * The 1-SE method for choosing simpler models finds the numerically optimal value and its corresponding standard error and then seeks the simplest model whose performance is within a single standard error of
+the numerically best value. The 1-SE rule would choose a tree with 4 splits (The minimal xerror is 0.22098, the xstd is 0.045112 so the tree with xerror smaller than 0.22098+0.045112 is the one with xerror 0.23275 which is a tree with 4 splits and final size (here the number of terminal nodes) equal to 5.
+
+```{r}
+plotcp(rpartTree, minline = TRUE) # horizontal line is drawn 1SE above the minimum of the curve
+```
+
+Looking at the plot, we see that the best tree has 5 terminal nodes (4 splits), based
+on cross-validation (any number of splits within the "error bars"). This sub tree is extracted and saved in `rpartTree2`.
+
+```{r, echo=F}
+rpartTree2 <- prune(rpartTree, cp = 0.0106)
+#plot(rpartTree2, compress = TRUE, margin = 0.05) 
+#text(rpartTree2, cex = 0.9)
+```
+
+  * We used the default cp value of 0.01 may have over pruned the tree, since the cross-validated error is barely at a minimum. A rerun with the cp threshold at .001 gave the same results! Run the code to verify.
+  
+```{r, eval=F}
+set.seed(1235) #same as before
+controlrpart2 <- rpart.control(minsplit = 15, cp=0.001)
+rpartTree3 <- rpart(Disp ~ ., data =train, control=controlrpart2, method="anova")
+plotcp(rpartTree3, minline = TRUE)
+printcp(rpartTree3)
+```
+
+Returning back to `rpartTree2`. The `summary()` commands recognizes the cp option, which allows us
+to look at only the top few splits
+
+```{r}
+summary(rpartTree2, cp = 0.0106)
+```
+
+  * The first split on `Gear2` partitions the 79 observations into groups of 69 and 10 (nodes 2 and 3) with mean of 135.36 and 272.5, respectively.
+  * The improvement listed is the percent change in SS for this split, i.e., 
+  $1-(SS_{right} + SS_{left})/SS_{parent}$, which is the gain in $R^2$ for the fit.
+  * For explanations on the variable importance and surrogate splits we refer to [An Introduction to Recursive Partitioning Using the RPART Routines](https://cran.r-project.org/web/packages/rpart/vignettes/longintro.pdf) by the authors of the package. 
+  
+Finally, we look at the residuals from this model. There appears to be more variability in node 6 than in some of the other leaves.
+
+```{r}
+plot(predict(rpartTree2), resid(rpartTree2))
+abline(h = 0, lty = 2)
+```
+
+
+### Missing data
+In `rpart` the 2 observations with the missing values have been deleted. Given their small number compared to the 111 obserbvations the result is not expected to be altered substantially. Also, any observation with values for the dependent variable and at least one independent variable will participate in the modeling. 
+
+
+## An Estimator of Prediction Error
+A popular error measure of predictive performance is the root mean squared error (RMSE). It measures the average magnitude of the error, hence the lower its value the better. To obtain the predictions of the models we use the function `predict()`. It receives a model and a test dataset and retrieves the correspondent model predictions: 
+
+```{r}
+tree.predictions <- predict(rpartTree2, newdata=test)
+```
+
+The RMSE then can be obtained as follows:
+
+```{r}
+(mse.tree <- sqrt(mean((tree.predictions - test$Disp)^2, na.rm = T)))
+```
+
+
+For further reading see "The Elements of Statistical Learning" by @friedman2001elements. It is available [here](http://statweb.stanford.edu/~tibs/ElemStatLearn/). For less mathematically/statistically inclined audience "An Introduction to Statistical Learning" by @james2013introduction is recommended. 
+
+## References
+
