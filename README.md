@@ -1,6 +1,6 @@
 # CART
 
-- This is an example of a classification tree.
+- This is an example of a classification tree (CART).
 - I use the [rpart](https://cran.r-project.org/web/packages/rpart/rpart.pdf) package in R. 
 - You need the "biblioCART.bib" in your working directory to compile the Rmd file.
 - the "biblioCART.bib" stores the references. If not familiar with Bibtex, just delete the "bibliography: biblioCART.bib"" 
