@@ -1,0 +1,14 @@
+language: r
+sudo: false
+cache: packages
+
+r_github_packages:
+   - rstudio/rmarkdown
+   
+install:
+   - R -e "install.packages('devtools')"
+   - R -e "devtools::install_github('rstudio/rmarkdown')"
+   - R -e 'install.packages(c("knitr", "boot", "rpart"))'
+
+script:
+  - R -e "rmarkdown::render('CART.Rmd')"
