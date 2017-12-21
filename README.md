@@ -1,4 +1,4 @@
-# CART
+# CART [![Build Status](https://travis-ci.org/solonkarapa/CART.svg?branch=master)](https://travis-ci.org/solonkarapa/CART)
 
 - This is an example of a classification tree (CART).
 - I use the [rpart](https://cran.r-project.org/web/packages/rpart/rpart.pdf) package in R. 
